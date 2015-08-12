@@ -1,0 +1,123 @@
+---
+title: "Iron Ore Exports"
+author: "Kelly Chan"
+date: "August 6, 2015"
+output: html_document
+---
+```{r echo = FALSE}
+options(warn=-1)
+```
+
+In this project, I want to count iron ore exports from Brazil using ship positional data.
+
+First, let's load the data required.
+
+* Fleet
+* Port
+* Vessel Position
+
+```{r}
+
+setwd("I:\\Louis Dreyfus")
+dfFleet = read.csv("Fleet Register.csv")
+dfPort = read.csv("Portlog.csv")
+dfPosition = read.csv("Position Data 2015.csv")
+
+```
+Let's have a quick look at what's in my data.
+
+```{r}
+#check the data in the position dataset
+str(dfPosition)
+
+#check if there are any missing coordinates
+mean(is.na(dfPosition$longitude))
+mean(is.na(dfPosition$latitude))
+
+#check the data in the port dataset
+str(dfPort)
+
+```
+R did not recognize the $date column as date. So as to do date comparisons, I converted the $date column to date objects in a new column - $dateFormatted. I also created a getDaysInMonth function which returns a vector of all the dates in a month given the month and year.
+
+```{r}
+
+dfPosition$dateFormatted <- as.Date(as.character(dfPosition$date), "%Y-%m-%d")
+
+#function which returns all days in a month
+getDaysInMonth <- function(month, year){
+    firstDayOfMonth <- as.Date(paste(year, "/", month, "/1", sep = ""))
+    lastDayOfMonth <- as.Date(paste(year, "/", month+1, "/1", sep = "")) - 1
+    daysInMonth <- seq(firstDayOfMonth, lastDayOfMonth, "days")
+}
+
+daysInMay2015 <- getDaysInMonth(5, 2015)
+
+```
+R did not recognize the lat and long columns as numeric values. To do numeric comparison, they must first be converted to numeric values.
+
+```{r}
+
+#function which converts factor to numeric
+convertToNum <- function(factor){
+    as.numeric(levels(factor))[factor]
+}
+
+dfPort$latmin <- convertToNum(dfPort$latmin)
+dfPort$latmax <- convertToNum(dfPort$latmax)
+dfPort$longmin <- convertToNum(dfPort$longmin)
+dfPort$longmax <- convertToNum(dfPort$longmax)
+
+```
+To get only vessels that entered Brazil ports, I retrieved the coordinates of the 5 following ports in Brazil from the Port dataset.
+
+* Ponta da Madeira
+* Tubarao
+* Ponta Ubu
+* Porto Acu
+* Itaguai Guaiba
+
+```{r}
+#get Iron Ore ports
+pontadamadeira <- subset(dfPort, name == "PontaDaMadeira")
+tubarao <- subset(dfPort, name == "Tubarao")
+pontaubu <- subset(dfPort, name == "PontaUbu")
+pontoacu <- subset(dfPort, name == "PortoAcu")
+itaguaiguaiba <- subset(dfPort, name == "ItaguaiGuaiba")
+
+```
+
+Get all the vessels that entered the Iron Ore ports in the month of May 2015 from the Position dataset.
+
+```{r}
+
+positionEnteredPorts <- subset(dfPosition, dateFormatted %in% daysInMay2015 & status == "Moored" & ((latitude >= pontadamadeira$latmin & latitude <= pontadamadeira$latmax & longitude >= pontadamadeira$longmin & longitude <= pontadamadeira$longmax) | (latitude >= tubarao$latmin & latitude <= tubarao$latmax & longitude >= tubarao$longmin & longitude <= tubarao$longmax) | (latitude >= pontaubu$latmin & latitude <= pontaubu$latmax & longitude >= pontaubu$longmin & longitude <= pontaubu$longmax) | (latitude >= pontoacu$latmin & latitude <= pontoacu$latmax & longitude >= pontoacu$longmin & longitude <= pontoacu$longmax) | (latitude >= itaguaiguaiba$latmin & latitude <= itaguaiguaiba$latmax & longitude >= itaguaiguaiba$longmin & longitude <= itaguaiguaiba$longmax)))
+
+```
+A subset of these vessels have not left the port by the last day of May 2015 and should be excluded from the calculation.
+
+```{r}
+imoVesEnteredPorts <- unique(positionEnteredPorts$imo)
+
+#check if vessels have left
+lastDayOfMay <- as.Date("2015-5-31")
+positionVesEnteredLeftPorts <- subset(dfPosition, dateFormatted == lastDayOfMay & imo %in% imoVesEnteredPorts & status != "Moored" & !((latitude >= pontadamadeira$latmin & latitude <= pontadamadeira$latmax & longitude >= pontadamadeira$longmin & longitude <= pontadamadeira$longmax) | (latitude >= tubarao$latmin & latitude <= tubarao$latmax & longitude >= tubarao$longmin & longitude <= tubarao$longmax) | (latitude >= pontaubu$latmin & latitude <= pontaubu$latmax & longitude >= pontaubu$longmin & longitude <= pontaubu$longmax) | (latitude >= pontoacu$latmin & latitude <= pontoacu$latmax & longitude >= pontoacu$longmin & longitude <= pontoacu$longmax) | (latitude >= itaguaiguaiba$latmin & latitude <= itaguaiguaiba$latmax & longitude >= itaguaiguaiba$longmin & longitude <= itaguaiguaiba$longmax)))
+
+imoVesEnteredLeftPorts <- unique(positionVesEnteredLeftPorts$imo)
+
+```
+Get the deadweight of the vessels that entered and left the Iron Ore ports in May 2015 by merging with the Fleet dataset using the vessels' imo.
+
+```{r}
+vesEnteredLeftPorts <- data.frame(imo = imoVesEnteredLeftPorts)
+vesEnteredLeftPorts <- merge(x = vesEnteredLeftPorts, y = dfFleet, by = "imo")
+
+```
+Since only vessels with deadweight more than 60,000 metric tonnes are ships exporting iron ore, sum up the deadweight of all vessels with deadweight more than 60,000 metric tonnes to get an estimate of the amount of iron ore exported by Brazil in May 2015.
+
+```{r}
+
+ironOreVesEnteredLeftPorts <- subset(vesEnteredLeftPorts, Deadweight > 60000)
+sum(ironOreVesEnteredLeftPorts$Deadweight)
+
+```

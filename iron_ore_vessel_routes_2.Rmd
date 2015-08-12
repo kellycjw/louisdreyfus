@@ -1,0 +1,227 @@
+---
+title: "Iron Ore Vessel Routes"
+author: "Kelly Chan"
+date: "August 6, 2015"
+output: html_document
+---
+```{r echo = FALSE}
+options(warn=-1)
+```
+
+In this project, I want to count how many ships that left the Iron Ore ports in May 2015 Week 4 came from the Indian Ocean and the North Atlantic Ocean.
+
+First, let's load the data required.
+
+* Fleet
+* Port
+* Vessel Position
+
+```{r}
+
+setwd("I:\\Louis Dreyfus")
+dfFleet = read.csv("Fleet Register.csv")
+dfPort = read.csv("Portlog.csv")
+dfPosition = read.csv("Position Data 2015.csv")
+
+```
+Let's have a look at where vessels have traveled in May 2015.
+
+```{r}
+
+#function which returns all days in a month
+getDaysInMonth <- function(month, year){
+    firstDayOfMonth <- as.Date(paste(year, "/", month, "/1", sep = ""))
+    lastDayOfMonth <- as.Date(paste(year, "/", month+1, "/1", sep = "")) - 1
+    daysInMonth <- seq(firstDayOfMonth, lastDayOfMonth, "days")
+}
+
+daysInMay2015 <- getDaysInMonth(5, 2015)
+
+dfPosition$dateFormatted <- as.Date(as.character(dfPosition$date), "%Y-%m-%d")
+
+#plot for all positions in may 2015
+vesMay2015 <- subset(dfPosition, dateFormatted %in% daysInMay2015)
+plot(vesMay2015$longitude, vesMay2015$latitude, pch = 20, xlab = "Longitude", ylab = "Latitude", main = "Vessel Position")
+```
+```{r} 
+```
+This plot gives us a good idea where the north atlantic ocean and the indian ocean is. Let's zoom in on the vessels which entered the iron ore ports in Week 4 of May 2015, assuming that the week begins on 22 May 2015 and ends on 28 May 2015.
+
+```{r}
+
+#function which converts factor to numeric
+convertToNum <- function(factor){
+    as.numeric(levels(factor))[factor]
+}
+
+dfPort$latmin <- convertToNum(dfPort$latmin)
+dfPort$latmax <- convertToNum(dfPort$latmax)
+dfPort$longmin <- convertToNum(dfPort$longmin)
+dfPort$longmax <- convertToNum(dfPort$longmax)
+
+#get Brazil Iron Ore ports
+pontadamadeira <- subset(dfPort, name == "PontaDaMadeira")
+tubarao <- subset(dfPort, name == "Tubarao")
+pontaubu <- subset(dfPort, name == "PontaUbu")
+pontoacu <- subset(dfPort, name == "PortoAcu")
+itaguaiguaiba <- subset(dfPort, name == "ItaguaiGuaiba")
+
+#function which returns all vessels that are more than 60,000 deadweight which entered and left the iron ore ports during these dates
+getVesEnteredLeftPorts <- function(dates){
+    #get all vessels that are more than 60,000 deadweight which entered the iron ore ports during these dates
+    positionEnteredPorts <- subset(dfPosition, dateFormatted %in% dates & status == "Moored" & ((latitude >= pontadamadeira$latmin & latitude <= pontadamadeira$latmax & longitude >= pontadamadeira$longmin & longitude <= pontadamadeira$longmax) | (latitude >= tubarao$latmin & latitude <= tubarao$latmax & longitude >= tubarao$longmin & longitude <= tubarao$longmax) | (latitude >= pontaubu$latmin & latitude <= pontaubu$latmax & longitude >= pontaubu$longmin & longitude <= pontaubu$longmax) | (latitude >= pontoacu$latmin & latitude <= pontoacu$latmax & longitude >= pontoacu$longmin & longitude <= pontoacu$longmax) | (latitude >= itaguaiguaiba$latmin & latitude <= itaguaiguaiba$latmax & longitude >= itaguaiguaiba$longmin & longitude <= itaguaiguaiba$longmax)))
+        
+    imoVesEnteredPorts <- unique(positionEnteredPorts$imo)
+    
+    #check which of these vessels are more than 60,000 deadweight
+    imoLargeVesEnteredLeftPorts <- data.frame(imo = imoVesEnteredPorts)
+    imoLargeVesEnteredLeftPorts <- merge(x = imoLargeVesEnteredLeftPorts, y = dfFleet, by = "imo")
+    imoLargeVesEnteredLeftPorts <- subset(imoLargeVesEnteredLeftPorts, Deadweight > 60000)
+    imoLargeVes <- imoLargeVesEnteredLeftPorts$imo
+    
+    #check if vessels have left by the last day of the period
+    lastDay <- dates[order(dates, decreasing = TRUE)][1]
+    positionVesEnteredLeftPorts <- subset(dfPosition, dateFormatted == lastDay & imo %in% imoLargeVes & status != "Moored" & !((latitude >= pontadamadeira$latmin & latitude <= pontadamadeira$latmax & longitude >= pontadamadeira$longmin & longitude <= pontadamadeira$longmax) | (latitude >= tubarao$latmin & latitude <= tubarao$latmax & longitude >= tubarao$longmin & longitude <= tubarao$longmax) | (latitude >= pontaubu$latmin & latitude <= pontaubu$latmax & longitude >= pontaubu$longmin & longitude <= pontaubu$longmax) | (latitude >= pontoacu$latmin & latitude <= pontoacu$latmax & longitude >= pontoacu$longmin & longitude <= pontoacu$longmax) | (latitude >= itaguaiguaiba$latmin & latitude <= itaguaiguaiba$latmax & longitude >= itaguaiguaiba$longmin & longitude <= itaguaiguaiba$longmax)))
+        
+    unique(positionVesEnteredLeftPorts$imo)
+}
+
+week4May2015 <- daysInMay2015[22:28]
+imoVesEnteredLeftPorts <- getVesEnteredLeftPorts(week4May2015)
+
+```
+Let's plot the routes taken by these vessels 3 weeks preceeding their entry to the iron ore ports.
+
+```{r}
+week1to3May2015 <- daysInMay2015[1:21]
+positionVesWeek1to3May2015 <- subset(dfPosition, imo %in% imoVesEnteredLeftPorts & dateFormatted %in% week1to3May2015)
+
+plot(vesMay2015$longitude, vesMay2015$latitude, pch = 20, xlab = "Longitude", ylab = "Latitude", main = "Vessel Position")
+points(positionVesWeek1to3May2015$longitude, positionVesWeek1to3May2015$latitude, pch = 20, col = "green")
+
+```
+```{r} 
+```
+We observe that the vessels came from either the North Atlantic Ocean or the Indian Ocean. 
+
+To classify the shipping routes, I first pick a point in each of the oceans.
+```{r}
+#coordinates of a point in north atlantic ocean and indian ocean
+northatlantic <- data.frame(long = -27.545522, lat = 28.002539)
+indian <- data.frame(long = 22.152255, lat = -37.485686)
+```
+```{r echo = FALSE}
+plot(vesMay2015$longitude, vesMay2015$latitude, pch = 20, xlab = "Longitude", ylab = "Latitude", main = "Vessel Position")
+points(positionVesWeek1to3May2015$longitude, positionVesWeek1to3May2015$latitude, pch = 20, col = "green")
+points(northatlantic$long, northatlantic$lat, pch=20, col="red")
+points(indian$long, indian$lat, pch=20, col="red")
+```
+```{r} 
+```
+If the center of the cluster of positioning points by a vessel is closer to the North Atlantic Ocean point than the Indian Ocean point, then the vessel is said to have came from the North Atlantic Ocean.
+
+```{r}
+#function to calculate the euclidean distance between 2 points
+distance <- function(x1, y1, x2, y2){
+    sqrt((x2-x1)^2 + (y2-y1)^2)
+}
+
+#function to get the most likely route taken
+nearestOcean <- function(x1, y1){
+    distanceToIndianOcean <- distance(x1, y1, indian$long, indian$lat)
+    
+    distanceToNorthAtlanticOcean <- distance(x1, y1, northatlantic$long, northatlantic$lat)
+    
+    if (distanceToIndianOcean == distanceToNorthAtlanticOcean){
+        "NA"
+    }
+    
+    if (distanceToIndianOcean < distanceToNorthAtlanticOcean){
+        "Indian Ocean"
+    } else {
+        "North Atlantic Ocean"
+    }
+}
+
+#function which returns the shipping routes given vessel imos and the estimated date which it leaves the port
+getFreightRoutes <- function(imo, givenDate, isPlot){
+    freightRoutes <- data.frame()
+    for(i in seq_along(imo)) {
+        currIMO <- imo[i]
+        #get the last 20 positions of the vessel before it reaches the iron ore port
+        imoSubset <- subset(dfPosition, imo == currIMO & dateFormatted < givenDate & !((latitude >= pontadamadeira$latmin & latitude <= pontadamadeira$latmax & longitude >= pontadamadeira$longmin & longitude <= pontadamadeira$longmax) | (latitude >= tubarao$latmin & latitude <= tubarao$latmax & longitude >= tubarao$longmin & longitude <= tubarao$longmax) | (latitude >= pontaubu$latmin & latitude <= pontaubu$latmax & longitude >= pontaubu$longmin & longitude <= pontaubu$longmax) | (latitude >= pontoacu$latmin & latitude <= pontoacu$latmax & longitude >= pontoacu$longmin & longitude <= pontoacu$longmax) | (latitude >= itaguaiguaiba$latmin & latitude <= itaguaiguaiba$latmax & longitude >= itaguaiguaiba$longmin & longitude <= itaguaiguaiba$longmax)))
+        noOfRows <- nrow(imoSubset)
+        upperLimit <- 20
+        if (noOfRows < 20)
+        {
+            upperLimit <- noOfRows
+        }
+        if (noOfRows > 0){
+            imoSubset <- imoSubset[order(imoSubset$dateFormatted, decreasing = TRUE),][1:upperLimit,]
+            simplifiedImoSubset <- data.frame(long = imoSubset$longitude, lat = imoSubset$latitude)
+            kmeansImoSubset <- kmeans(simplifiedImoSubset, centers = 1)
+            center <- kmeansImoSubset$centers
+            
+            #plot if isPlot is TRUE
+            if (isPlot){
+                points(simplifiedImoSubset$long, simplifiedImoSubset$lat, pch = 20, col = "green")
+                points(center[1], center[2], pch=17, col="blue")
+            }
+            
+            imoRow <- data.frame(imo = currIMO, route = nearestOcean(center[1], center[2]))
+            freightRoutes <- rbind(freightRoutes, imoRow)
+        }
+    }
+    freightRoutes
+}
+    
+```
+To ensure that the classification works correctly, we randomly pick a sample of 15 vessels and plot each of the vessel's route, cluster center and tally it against the classified route. In this example, I've plotted the route of the vessel with imo 9497282.
+
+```{r}
+
+plot(vesMay2015$longitude, vesMay2015$latitude, pch = 20, xlab = "Longitude", ylab = "Latitude", main = "Vessel Position")
+points(northatlantic$long, northatlantic$lat, pch=20, col="red")
+points(indian$long, indian$lat, pch=20, col="red")
+
+imo <- c(9497282)
+firstDayOfWeek4 <- week4May2015[1]
+vesFreightRoute <- getFreightRoutes(imo, firstDayOfWeek4, TRUE)
+vesFreightRoute
+
+```
+From this example, we can see that the route taken is correctly classified to be Indian Ocean. After repeating this with another 15 vessels, I am certain that the function is able to determine if the vessel came from North Atlantic Ocean or Indian Ocean accurately. The validated routes for all 15 vessels are recorded in training_routes.csv file.
+
+I can now apply the function to all the vessels that left the iron ore ports in Week 4 May 2015 and plot a bar chart to help me visualize which routes are taken by the vessels.
+
+```{r} 
+
+allFreightRoutes <- getFreightRoutes(imoVesEnteredLeftPorts, firstDayOfWeek4, FALSE)
+library(plyr)
+aggFreightRoutes <- count(allFreightRoutes, c("route"))
+aggFreightRoutes
+barplot(aggFreightRoutes$freq, names.arg = aggFreightRoutes$route, main = "Frequency of Vessel Routes")
+
+```
+```{r} 
+```
+Taking samples from the forth week of each month, I can also study the frequency these routes are used over time.
+
+```{r} 
+routesOverTime <- data.frame()
+for(i in 1:7){
+    daysInMonth <- getDaysInMonth(i, 2015)
+    week4Month <- daysInMonth[22:28]
+    imoVesEnteredLeftPorts <- getVesEnteredLeftPorts(week4Month)
+    firstDayOfWeek4 <- week4Month[1]
+    routes <- getFreightRoutes(imoVesEnteredLeftPorts, firstDayOfWeek4, FALSE)
+    aggRoutes <- count(routes, c("route"))
+    aggRoutes$date <- firstDayOfWeek4
+    routesOverTime <- rbind(routesOverTime, aggRoutes)
+}
+
+NARoutes <- subset(routesOverTime, route == "North Atlantic Ocean")
+plot(NARoutes$date, NARoutes$freq, ylim = c(10,40), col="red", type = "l", xlab = "", ylab = "No. of Vessels", main = "Frequency of Vessel Routes over Time")
+IRoutes <- subset(routesOverTime, route == "Indian Ocean")
+points(IRoutes$date, IRoutes$freq, col="blue", type = "l")
+legend('topright', c("North Atlantic Ocean", "Indian Ocean") , lty=1, col=c('red', 'blue'), bty='n', cex=.75)

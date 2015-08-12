@@ -1,0 +1,114 @@
+---
+title: "Iron Ore Exports vs Vessel Hire Rate"
+author: "Kelly Chan"
+date: "August 8, 2015"
+output: html_document
+---
+```{r echo = FALSE}
+options(warn=-1)
+```
+
+In this project, I want to explain the vessel hire rate using the vessel positional data.
+
+First, let's load the data required.
+
+* Fleet
+* Port
+* Vessel Position
+* Hire Rate
+
+```{r}
+
+setwd("I:\\Louis Dreyfus")
+dfFleet = read.csv("Fleet Register.csv")
+dfPort = read.csv("Portlog.csv")
+dfPosition = read.csv("Position Data 2015.csv")
+dfHireRate = read.csv("Hire Rate.csv")
+
+```
+Since we only have vessel positional data for 2015, let's plot the vessel hire rate for 2015.
+
+```{r}
+
+#function which returns all days in a month
+getDaysInMonth <- function(month, year){
+    firstDayOfMonth <- as.Date(paste(year, "/", month, "/1", sep = ""))
+    lastDayOfMonth <- as.Date(paste(year, "/", month+1, "/1", sep = "")) - 1
+    daysInMonth <- seq(firstDayOfMonth, lastDayOfMonth, "days")
+}
+
+daysIn2015 <- seq(as.Date("2015-01-01"), as.Date("2015-7-31"), "days")
+
+#plot hire rate trend
+dfHireRate$dateFormatted <- as.Date(as.character(dfHireRate$Date), "%m/%d/%Y")
+dfHireRate2015 <- subset(dfHireRate, dateFormatted %in% daysIn2015)
+
+plot(dfHireRate2015$dateFormatted, dfHireRate2015$Last.Price, pch = 20, xlab = "", ylab = "Hire Rate ($)", main = "Vessel Hire Rate over Time")
+
+```
+
+The hire rate starts off low but doubled in Jan and slowly fell throughout Feb and Mar. The hire rate remains low through Apr and begun rising in May and quadrupled by end of Jul.
+
+It is likely that the hire rate (supply) is affected by the iron ore exports (demand). Let's plot the iron ore exports in 2015 to see if there is a correlation.
+
+```{r}
+
+dfPosition$dateFormatted <- as.Date(as.character(dfPosition$date), "%Y-%m-%d")
+
+#function which converts factor to numeric
+convertToNum <- function(factor){
+    as.numeric(levels(factor))[factor]
+}
+
+dfPort$latmin <- convertToNum(dfPort$latmin)
+dfPort$latmax <- convertToNum(dfPort$latmax)
+dfPort$longmin <- convertToNum(dfPort$longmin)
+dfPort$longmax <- convertToNum(dfPort$longmax)
+
+#get Brazil Iron Ore ports
+pontadamadeira <- subset(dfPort, name == "PontaDaMadeira")
+tubarao <- subset(dfPort, name == "Tubarao")
+pontaubu <- subset(dfPort, name == "PontaUbu")
+pontoacu <- subset(dfPort, name == "PortoAcu")
+itaguaiguaiba <- subset(dfPort, name == "ItaguaiGuaiba")
+
+#function to get iron ore export of a month given the month and year
+getIronOreExport <- function(month, year){
+    firstDayOfMonth <- as.Date(paste(year,"/",month,"/1",sep=""))
+    daysInMonth <- getDaysInMonth(month, year)
+    positionEnteredPorts <- subset(dfPosition, dateFormatted %in% daysInMonth & status == "Moored" & 
+((latitude >= pontadamadeira$latmin & latitude <= pontadamadeira$latmax & longitude >= pontadamadeira$longmin & longitude <= pontadamadeira$longmax) | (latitude >= tubarao$latmin & latitude <= tubarao$latmax & longitude >= tubarao$longmin & longitude <= tubarao$longmax) | (latitude >= pontaubu$latmin & latitude <= pontaubu$latmax & longitude >= pontaubu$longmin & longitude <= pontaubu$longmax) | (latitude >= pontoacu$latmin & latitude <= pontoacu$latmax & longitude >= pontoacu$longmin & longitude <= pontoacu$longmax) | (latitude >= itaguaiguaiba$latmin & latitude <= itaguaiguaiba$latmax & longitude >= itaguaiguaiba$longmin & longitude <= itaguaiguaiba$longmax)))
+    
+    imoVesEnteredPorts <- unique(positionEnteredPorts$imo)
+
+    #check if vessels have left
+    lastDayOfMonth <- as.Date(paste(year,"/",month+1,"/1",sep="")) - 1
+    positionVesEnteredLeftPorts <- subset(dfPosition, dateFormatted == lastDayOfMonth & imo %in% imoVesEnteredPorts & status != "Moored" & !((latitude >= pontadamadeira$latmin & latitude <= pontadamadeira$latmax & longitude >= pontadamadeira$longmin & longitude <= pontadamadeira$longmax) | (latitude >= tubarao$latmin & latitude <= tubarao$latmax & longitude >= tubarao$longmin & longitude <= tubarao$longmax) | (latitude >= pontaubu$latmin & latitude <= pontaubu$latmax & longitude >= pontaubu$longmin & longitude <= pontaubu$longmax) | (latitude >= pontoacu$latmin & latitude <= pontoacu$latmax & longitude >= pontoacu$longmin & longitude <= pontoacu$longmax) | (latitude >= itaguaiguaiba$latmin & latitude <= itaguaiguaiba$latmax & longitude >= itaguaiguaiba$longmin & longitude <= itaguaiguaiba$longmax)))
+    
+    imoVesEnteredLeftPorts <- unique(positionVesEnteredLeftPorts$imo)
+
+    vesEnteredLeftPorts <- data.frame(imo = imoVesEnteredLeftPorts)
+    vesEnteredLeftPorts <- merge(x = vesEnteredLeftPorts, y = dfFleet, by = "imo")
+    
+    ironOreVesEnteredLeftPorts <- subset(vesEnteredLeftPorts, Deadweight > 60000)
+    
+    #return a data frame with the iron ore export and the month
+    data.frame(ironOreExport = sum(ironOreVesEnteredLeftPorts$Deadweight), month = firstDayOfMonth)
+}
+
+#get iron ore export values for Jan to Jul 2015
+ironOreExportOverTime <- data.frame()
+for(i in 1:7){
+    ironOreExportOverTime <- rbind(ironOreExportOverTime, getIronOreExport(i, 2015))
+}
+
+ironOreExportOverTime$ironOreInMillionTonnes <- ironOreExportOverTime$ironOreExport / 1000000
+
+plot(ironOreExportOverTime$month,ironOreExportOverTime$ironOreInMillionTonnes, type="l", xlab = "", ylab = "Iron Ore Exported (million tonnes)", main = "Iron Ore Export over Time")
+
+plot(dfHireRate2015$dateFormatted, dfHireRate2015$Last.Price, pch = 20, xlab = "", ylab = "Hire Rate ($)", main = "Vessel Hire Rate over Time")
+
+```
+```{r}
+```
+Here, we can see that the vessel hire rate responds to demand for iron ore. As the demand rises, the hire rate rises too, though it tends to lag behind. This could be because supply still exceeds demand from Mar to May 2015. Once demand start to exceed supply from May to Jul 2015, the hire rate starts to increase sharply.
